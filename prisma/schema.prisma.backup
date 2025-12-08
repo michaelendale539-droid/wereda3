@@ -1,0 +1,198 @@
+// This is your Prisma schema file
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+}
+
+// User accounts for administrators and staff
+model User {
+  id              String    @id @default(cuid())
+  email           String    @unique
+  name            String?
+  hashedPassword  String
+  role            UserRole  @default(STAFF)
+  isActive        Boolean   @default(true)
+  lastLoginAt     DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  refreshTokens   RefreshToken[]
+  auditLogs       AuditLog[]
+  posts           Post[]    @relation("Author")
+  uploadedMedia   Media[]   @relation("Uploader")
+}
+
+// User roles for authorization
+enum UserRole {
+  ADMIN
+  STAFF
+  MODERATOR
+}
+
+// Refresh tokens for user sessions
+model RefreshToken {
+  id        String   @id @default(cuid())
+  token     String   @unique
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId])
+}
+
+// Anonymous compliance reports
+model ComplianceReport {
+  id          String     @id @default(cuid())
+  issueType   String
+  details     String
+  status      ReportStatus @default(PENDING)
+  priority    Priority    @default(MEDIUM)
+  location    String?
+  submittedAt DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+}
+
+// Status of compliance reports
+enum ReportStatus {
+  PENDING
+  SUSPENDED
+}
+
+model User {
+  id            Int         @id @default(autoincrement())
+  email         String      @unique
+  passwordHash  String      // Store hashed password securely
+  name          String
+  role          UserRole    @default(STAFF)
+  status        UserStatus  @default(PENDING)
+  
+  // Timestamps
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+  lastLogin     DateTime?
+  
+  // Relations
+  posts         Post[]
+  documents     Document[]
+  adminNotes    AdminNote[]
+}
+
+// ----------------------------------------------------
+// 2. Content Management (Posts)
+// ----------------------------------------------------
+
+enum PostStatus {
+  PUBLISHED
+  DRAFT
+  ARCHIVED
+}
+
+model Post {
+  id              Int         @id @default(autoincrement())
+  title           String      @db.VarChar(255)
+  slug            String      @unique // For public URLs (e.g., /posts/budget-announcement)
+  content         String      // Rich text content (use String for simplicity, or RichText field in a specific DB)
+  excerpt         String?     @db.VarChar(500)
+  status          PostStatus  @default(DRAFT)
+  
+  // Timestamps
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+  publishedAt     DateTime?
+  
+  // Relation: Post belongs to one User
+  authorId        Int
+  author          User        @relation(fields: [authorId], references: [id])
+}
+
+// ----------------------------------------------------
+// 3. eLibrary (Document Management)
+// ----------------------------------------------------
+
+enum DocumentStatus {
+  PUBLIC
+  DRAFT
+  ARCHIVED
+}
+
+model Document {
+  id              Int                 @id @default(autoincrement())
+  title           String              @db.VarChar(255)
+  category        String              // Could be an enum if categories are fixed (Laws, Reports, Notices)
+  fileKey         String              @unique // Storage bucket key (S3/GCS/Azure Blob)
+  mimeType        String              @db.VarChar(50)
+  status          DocumentStatus      @default(DRAFT)
+  downloadCount   Int                 @default(0)
+  
+  // Timestamps
+  createdAt       DateTime            @default(now())
+  updatedAt       DateTime            @updatedAt
+  
+  // Relation: Document belongs to one User (uploader)
+  uploaderId      Int
+  uploader        User                @relation(fields: [uploaderId], references: [id])
+}
+
+// ----------------------------------------------------
+// 4. Compliance Reports
+// ----------------------------------------------------
+
+enum ReportStatus {
+  NEW
+  PENDING_REVIEW
+  IN_INVESTIGATION
+  CLOSED
+}
+
+enum IssueType {
+  CORRUPTION
+  MISCONDUCT
+  NEPOTISM
+  OTHER
+}
+
+enum Urgency {
+  HIGH
+  MEDIUM
+  LOW
+}
+
+model ComplianceReport {
+  id                Int           @id @default(autoincrement())
+  issueType         IssueType
+  urgency           Urgency
+  summary           String        @db.VarChar(255)
+  fullDetails       String        // The full anonymous submission text
+  
+  // Status and Timestamps
+  status            ReportStatus  @default(NEW)
+  isAnonymous       Boolean       @default(true) // Always true for public reports
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
+  
+  // Relation: One report can have many administrative notes
+  adminNotes        AdminNote[]
+}
+
+// ----------------------------------------------------
+// 5. Admin Notes (for Compliance Reports)
+// ----------------------------------------------------
+
+model AdminNote {
+  id                Int           @id @default(autoincrement())
+  content           String
+  
+  // Relations: Note links to a User and a Report
+  reportId          Int
+  report            ComplianceReport @relation(fields: [reportId], references: [id])
+
+  authorId          Int
+  author            User          @relation(fields: [authorId], references: [id])
+
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
+}
